@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Protect The Crystal</title>
+
+<style>
+html,body{
+  margin:0;
+  padding:0;
+  overflow:hidden;
+  touch-action:none;
+  overscroll-behavior:none;
+  background:black;
+  font-family:Arial;
+  color:white;
+}
+
+#startScreen,#tutorial,#gameOverScreen{
+  position:absolute;
+  width:100%;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  background:black;
+  z-index:10;
+}
+
+#tutorial{
+  background:rgba(0,0,0,0.9);
+  display:none;
+  font-size:26px;
+}
+
+#gameArea{
+  position:relative;
+  width:100%;
+  height:100vh;
+  display:none;
+}
+
+#rocky{
+  position:absolute;
+  width:80px;
+}
+
+#crystal{
+  position:absolute;
+  width:80px;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+}
+
+.enemy{
+  position:absolute;
+  width:28px;
+  height:28px;
+  border-radius:50%;
+  background:linear-gradient(45deg,cyan,magenta);
+}
+
+.bullet{
+  position:absolute;
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:cyan;
+}
+
+.healthBox{
+  width:22px;
+  height:22px;
+  background:red;
+  display:inline-block;
+  margin:4px;
+}
+
+#ui{
+  position:absolute;
+  top:10px;
+  width:100%;
+  text-align:center;
+}
+</style>
+</head>
+<body>
+
+<div id="startScreen">
+  <h1>Protect The Crystal</h1>
+  <input id="playerName" placeholder="Enter Name">
+  <button onclick="startGame()">START</button>
+</div>
+
+<div id="tutorial">
+  <div>LEFT = MOVE</div>
+  <div>RIGHT = FIRE</div>
+</div>
+
+<div id="gameOverScreen" style="display:none;">
+  <h1>GAME OVER</h1>
+  <h2 id="finalScore"></h2>
+  <button onclick="location.reload()">Restart</button>
+</div>
+
+<div id="gameArea">
+  <div id="ui">
+    <div id="info"></div>
+    <div id="healthBar"></div>
+  </div>
+  <img src="assets/rocky.png" id="rocky">
+  <img src="assets/crystal.png" id="crystal">
+</div>
+
+<audio id="startSound" src="assets/start.mp3"></audio>
+<audio id="gameOverSound" src="assets/gameover.mp3"></audio>
+
+<script>
+
+// ---------- GLOBAL ----------
+let rocky=document.getElementById("rocky");
+let crystal=document.getElementById("crystal");
+let gameArea=document.getElementById("gameArea");
+
+let score=0;
+let level=1;
+let health=5;
+let enemySpeed=1.6;
+let enemies=[];
+let bullets=[];
+let gameRunning=false;
+let spawnTimer=0;
+
+// ---------- UI ----------
+function updateUI(){
+  document.getElementById("info").innerHTML=
+  "Score: "+score+" | Level: "+level;
+
+  let bar=document.getElementById("healthBar");
+  bar.innerHTML="";
+  for(let i=0;i<health;i++){
+    let box=document.createElement("div");
+    box.className="healthBox";
+    bar.appendChild(box);
+  }
+}
+
+// ---------- START ----------
+function startGame(){
+  let name=document.getElementById("playerName").value.trim();
+  if(name==="") return;
+
+  document.getElementById("startScreen").style.display="none";
+
+  let startSound=document.getElementById("startSound");
+  startSound.currentTime=0;
+  startSound.play();
+
+  document.getElementById("tutorial").style.display="flex";
+
+  setTimeout(()=>{
+    document.getElementById("tutorial").style.display="none";
+    gameArea.style.display="block";
+    initGame();
+  },3000);
+}
+
+function initGame(){
+  score=0;
+  level=1;
+  health=5;
+  enemySpeed=1.6;
+  enemies=[];
+  bullets=[];
+  gameRunning=true;
+
+  rocky.style.left="50%";
+  rocky.style.top="80%";
+  rocky.style.transform="translate(-50%,-50%)";
+
+  updateUI();
+}
+
+// ---------- TOUCH CONTROL ----------
+document.addEventListener("touchstart",function(e){
+  if(!gameRunning) return;
+
+  for(let t of e.changedTouches){
+    if(t.clientX > window.innerWidth/2){
+      shootBullet(t.clientX,t.clientY);
+    }
+  }
+},{passive:false});
+
+document.addEventListener("touchmove",function(e){
+  if(!gameRunning) return;
+  e.preventDefault();
+
+  for(let t of e.changedTouches){
+    if(t.clientX < window.innerWidth/2){
+      let x=Math.max(0,Math.min(window.innerWidth-80,t.clientX-40));
+      let y=Math.max(0,Math.min(window.innerHeight-80,t.clientY-40));
+      rocky.style.left=x+"px";
+      rocky.style.top=y+"px";
+    }
+  }
+},{passive:false});
+
+// ---------- SHOOT ----------
+function shootBullet(tx,ty){
+  let rx=rocky.offsetLeft+40;
+  let ry=rocky.offsetTop+40;
+
+  let dx=tx-rx;
+  let dy=ty-ry;
+  let dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist===0) return;
+
+  bullets.push({
+    x:rx,
+    y:ry,
+    dx:(dx/dist)*10,
+    dy:(dy/dist)*10
+  });
+}
+
+// ---------- GAME LOOP ----------
+function gameLoop(){
+
+  if(gameRunning){
+
+    // 360° spawn
+    spawnTimer++;
+    if(spawnTimer>90){
+      spawnTimer=0;
+
+      let cx=crystal.offsetLeft+40;
+      let cy=crystal.offsetTop+40;
+      let angle=Math.random()*Math.PI*2;
+      let radius=Math.max(window.innerWidth,window.innerHeight)/2+60;
+
+      enemies.push({
+        x:cx+Math.cos(angle)*radius,
+        y:cy+Math.sin(angle)*radius
+      });
+    }
+
+    // move bullets
+    bullets.forEach((b,i)=>{
+      b.x+=b.dx;
+      b.y+=b.dy;
+      if(b.x<0||b.x>window.innerWidth||b.y<0||b.y>window.innerHeight){
+        bullets.splice(i,1);
+      }
+    });
+
+    // move enemies
+    enemies.forEach((e,i)=>{
+      let cx=crystal.offsetLeft+40;
+      let cy=crystal.offsetTop+40;
+
+      let dx=cx-e.x;
+      let dy=cy-e.y;
+      let dist=Math.sqrt(dx*dx+dy*dy);
+
+      e.x+=(dx/dist)*enemySpeed;
+      e.y+=(dy/dist)*enemySpeed;
+
+      if(dist<35){
+        enemies.splice(i,1);
+        health--;
+        updateUI();
+        if(health<=0) gameOver();
+      }
+    });
+
+    // bullet collision
+    bullets.forEach((b,bi)=>{
+      enemies.forEach((e,ei)=>{
+        let d=Math.sqrt((b.x-e.x)**2+(b.y-e.y)**2);
+        if(d<20){
+          bullets.splice(bi,1);
+          enemies.splice(ei,1);
+          score+=10;
+
+          if(score%200===0){
+            level++;
+            enemySpeed+=0.3;
+          }
+
+          updateUI();
+        }
+      });
+    });
+
+    render();
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+function render(){
+  document.querySelectorAll(".enemy,.bullet").forEach(el=>el.remove());
+
+  enemies.forEach(e=>{
+    let div=document.createElement("div");
+    div.className="enemy";
+    div.style.left=e.x+"px";
+    div.style.top=e.y+"px";
+    gameArea.appendChild(div);
+  });
+
+  bullets.forEach(b=>{
+    let div=document.createElement("div");
+    div.className="bullet";
+    div.style.left=b.x+"px";
+    div.style.top=b.y+"px";
+    gameArea.appendChild(div);
+  });
+}
+
+// ---------- GAME OVER ----------
+function gameOver(){
+  gameRunning=false;
+
+  let sound=document.getElementById("gameOverSound");
+  sound.currentTime=0;
+  sound.play();
+
+  document.getElementById("gameOverScreen").style.display="flex";
+  document.getElementById("finalScore").innerText="Score: "+score;
+}
+
+requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>
